@@ -17,15 +17,39 @@ async function post(path: string, body: any) {
 
 export type Company = { name: string; domain: string; logo?: string; employees?: number; industry?: string; city?: string; country?: string };
 
+/** Busca empresas: primero Clearbit (autocompletado gratuito, muy bueno con marcas), después Apollo. Sin duplicar dominios. */
 export async function searchCompanies(name: string): Promise<Company[]> {
   if (!name.trim()) return [];
-  const j = await post('/mixed_companies/search', { q_organization_name: name, per_page: 6, page: 1 });
-  return (j.organizations ?? j.accounts ?? [])
-    .filter((o: any) => o.primary_domain)
-    .map((o: any) => ({
-      name: o.name, domain: o.primary_domain, logo: o.logo_url, employees: o.estimated_num_employees,
-      industry: o.industry, city: o.city, country: o.country,
-    }));
+  const [clearbit, apollo] = await Promise.all([clearbitSuggest(name), apolloCompanies(name)]);
+  const seen = new Set<string>();
+  const out: Company[] = [];
+  for (const c of [...clearbit, ...apollo]) {
+    const d = c.domain.toLowerCase();
+    if (seen.has(d)) continue;
+    seen.add(d); out.push(c);
+  }
+  return out.slice(0, 6);
+}
+
+async function clearbitSuggest(name: string): Promise<Company[]> {
+  try {
+    const r = await fetch('https://autocomplete.clearbit.com/v1/companies/suggest?query=' + encodeURIComponent(name), { signal: AbortSignal.timeout(4000) });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return (j ?? []).slice(0, 5).map((c: any) => ({ name: c.name, domain: c.domain, logo: c.logo }));
+  } catch { return []; }
+}
+
+async function apolloCompanies(name: string): Promise<Company[]> {
+  try {
+    const j = await post('/mixed_companies/search', { q_organization_name: name, per_page: 5, page: 1 });
+    return (j.organizations ?? j.accounts ?? [])
+      .filter((o: any) => o.primary_domain)
+      .map((o: any) => ({
+        name: o.name, domain: o.primary_domain, logo: o.logo_url, employees: o.estimated_num_employees,
+        industry: o.industry, city: o.city, country: o.country,
+      }));
+  } catch { return []; }
 }
 
 export type Person = {
