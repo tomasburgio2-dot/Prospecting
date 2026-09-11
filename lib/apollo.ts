@@ -19,7 +19,14 @@ export type Company = { name: string; domain: string; logo?: string; employees?:
 
 /** Busca empresas: primero Clearbit (autocompletado gratuito, muy bueno con marcas), después Apollo. Sin duplicar dominios. */
 export async function searchCompanies(name: string): Promise<Company[]> {
-  if (!name.trim()) return [];
+  name = name.trim();
+  if (!name) return [];
+  // Si el usuario pegó una URL o un dominio, lo usamos directo (y tratamos de enriquecerlo para mostrar nombre/logo).
+  const dom = extractDomain(name);
+  if (dom) {
+    const info = await apolloByDomain(dom);
+    return [info ?? { name: dom, domain: dom }];
+  }
   const [clearbit, apollo] = await Promise.all([clearbitSuggest(name), apolloCompanies(name)]);
   const seen = new Set<string>();
   const out: Company[] = [];
@@ -29,6 +36,24 @@ export async function searchCompanies(name: string): Promise<Company[]> {
     seen.add(d); out.push(c);
   }
   return out.slice(0, 6);
+}
+
+export function extractDomain(input: string): string | null {
+  const t = input.trim().toLowerCase();
+  const m = t.match(/^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?:[\/?#].*)?$/);
+  return m ? m[1] : null;
+}
+
+/** Datos básicos de una empresa por dominio (Apollo organizations/enrich; no consume créditos de contacto). */
+async function apolloByDomain(domain: string): Promise<Company | null> {
+  try {
+    const r = await fetch(`${BASE}/organizations/enrich?domain=${encodeURIComponent(domain)}`, { headers: headers() });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const o = j.organization;
+    if (!o) return null;
+    return { name: o.name ?? domain, domain: o.primary_domain ?? domain, logo: o.logo_url, employees: o.estimated_num_employees, industry: o.industry, city: o.city, country: o.country };
+  } catch { return null; }
 }
 
 async function clearbitSuggest(name: string): Promise<Company[]> {

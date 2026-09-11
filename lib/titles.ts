@@ -38,7 +38,7 @@ const ALIASES: Record<string, string> = {
 const STOP = ['de', 'del', 'la', 'el', 'los', 'las', 'en', 'y', 'o', 'the', 'of', 'at', 'para', 'con', 'un', 'una', 'quien', 'quién', 'quienes', 'es', 'son', 'busco', 'buscar', 'quiero', 'dame', 'necesito', 'contacto', 'contactos', 'numero', 'número', 'mail', 'email', 'telefono', 'teléfono'];
 
 export function normalize(s: string) {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9&\s/]/g, ' ').replace(/\s+/g, ' ').trim();
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9&\s/]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** Parser de respaldo sin LLM. Devuelve roles detectados + el resto como nombre de empresa. */
@@ -67,7 +67,7 @@ export function parseWithDictionary(q: string): { roles: string[]; role_labels: 
   if (loc) { location = loc[1]; text = text.replace(loc[0], ' '); }
 
   // 4) lo que queda, menos stopwords y palabras genéricas, es la empresa
-  const generic = ['hotel', 'hoteles', 'restaurante', 'restaurantes', 'grupo', 'cadena', 'empresa', 'company', 'sa', 'sl'];
+  const generic = ['hotel', 'hoteles', 'restaurante', 'restaurantes', 'empresa', 'company', 'sa', 'sl'];
   const words = text.split(' ').filter((w) => w && !STOP.includes(w));
   const company = words.filter((w) => !generic.includes(w)).join(' ').trim() || words.join(' ').trim();
 
