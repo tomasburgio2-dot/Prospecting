@@ -59,9 +59,7 @@ export function parseWithDictionary(q: string): { roles: string[]; role_labels: 
   // 2) palabras sueltas de rol que quedaron ("director", "jefe") → si no hay grupo, las tratamos como título literal
   const loose = ['director', 'directora', 'manager', 'jefe', 'jefa', 'head', 'responsable', 'gerente', 'vp', 'vicepresidente'];
   const literal: string[] = [];
-  if (labels.size === 0) {
-    for (const w of loose) if (new RegExp(`(^|\\s)${w}(\\s|$)`).test(text)) { literal.push(w); text = text.replace(new RegExp(`(^|\\s)${w}(\\s|$)`), ' '); }
-  }
+  for (const w of loose) if (new RegExp(`(^|\\s)${w}(\\s|$)`).test(text)) { if (labels.size === 0) literal.push(w); text = text.replace(new RegExp(`(^|\\s)${w}(\\s|$)`), ' '); }
 
   // 3) ubicación (muy simple): "en madrid", "en barcelona"...
   let location: string | undefined;
