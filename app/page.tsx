@@ -9,6 +9,16 @@ type Row = { person: Person; state: 'queued' | 'working' | 'done' | 'error'; con
 
 const EXAMPLES = ['Sommelier del hotel Barceló', 'Director de A&B de Meliá en Madrid', 'Jefe de compras de Grupo Dani García', 'CEO y CFO de Scala Data Centers'];
 
+// Ubicaciones rápidas → cómo las entiende Apollo (en inglés)
+const PLACES: { label: string; value: string }[] = [
+  { label: 'España', value: 'Spain' }, { label: 'Madrid', value: 'Madrid, Spain' }, { label: 'Barcelona', value: 'Barcelona, Spain' },
+  { label: 'Málaga / Marbella', value: 'Malaga, Spain' }, { label: 'Baleares', value: 'Balearic Islands, Spain' }, { label: 'Canarias', value: 'Canary Islands, Spain' },
+  { label: 'México', value: 'Mexico' }, { label: 'CDMX', value: 'Mexico City, Mexico' }, { label: 'Uruguay', value: 'Uruguay' },
+  { label: 'Argentina', value: 'Argentina' }, { label: 'Chile', value: 'Chile' }, { label: 'Colombia', value: 'Colombia' }, { label: 'Brasil', value: 'Brazil' },
+];
+const PLACE_ALIASES: Record<string, string> = { spain: 'Spain', espana: 'Spain', madrid: 'Madrid, Spain', barcelona: 'Barcelona, Spain', malaga: 'Malaga, Spain', marbella: 'Malaga, Spain', valencia: 'Valencia, Spain', sevilla: 'Seville, Spain', bilbao: 'Bilbao, Spain', ibiza: 'Balearic Islands, Spain', mallorca: 'Balearic Islands, Spain', palma: 'Balearic Islands, Spain', canarias: 'Canary Islands, Spain', tenerife: 'Canary Islands, Spain', mexico: 'Mexico', cdmx: 'Mexico City, Mexico', guadalajara: 'Guadalajara, Mexico', monterrey: 'Monterrey, Mexico', cancun: 'Cancun, Mexico', uruguay: 'Uruguay', montevideo: 'Montevideo, Uruguay', argentina: 'Argentina', 'buenos aires': 'Buenos Aires, Argentina', chile: 'Chile', santiago: 'Santiago, Chile', colombia: 'Colombia', bogota: 'Bogota, Colombia', peru: 'Peru', lima: 'Lima, Peru', brasil: 'Brazil', brazil: 'Brazil', 'sao paulo': 'Sao Paulo, Brazil', portugal: 'Portugal', lisboa: 'Lisbon, Portugal', francia: 'France', paris: 'Paris, France', italia: 'Italy', londres: 'London, United Kingdom', london: 'London, United Kingdom', uk: 'United Kingdom', miami: 'Miami, Florida' };
+const toApolloPlace = (s?: string) => { if (!s) return ''; const k = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); return PLACE_ALIASES[k] ?? s; };
+
 export default function Home() {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 'history'>(1);
   const [query, setQuery] = useState('');
@@ -26,6 +36,9 @@ export default function Home() {
   const [rows, setRows] = useState<Row[]>([]);
   const [history, setHistory] = useState<{ contacts: Contact[]; finalscout_credits: number | null } | null>(null);
   const [manual, setManual] = useState('');
+  const [place, setPlace] = useState('');        // valor para Apollo, '' = cualquier lugar
+  const [placeLabel, setPlaceLabel] = useState('Cualquier lugar');
+  const [customPlace, setCustomPlace] = useState('');
 
   const initials = (p: { first_name?: string; name?: string; last_name_hint?: string }) => {
     const n = (p.name ?? `${p.first_name ?? ''} ${p.last_name_hint ?? ''}`).trim();
@@ -40,7 +53,8 @@ export default function Home() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
       setParsed(j.parsed); setCompanies(j.companies); setStep(2);
-      if (j.companies.length === 1) pickCompany(j.companies[0], j.parsed);
+      const pl = toApolloPlace(j.parsed.location);
+      setPlace(pl); setPlaceLabel(pl ? (j.parsed.location as string) : 'Cualquier lugar');
     } catch (e: any) { setErr(e.message || 'Algo falló'); }
     setBusy(false);
   }
@@ -53,15 +67,15 @@ export default function Home() {
   }
 
   // Paso 2 → personas
-  async function pickCompany(c: Company, p = parsed) {
+  async function pickCompany(c: Company, p = parsed, loc = place) {
     if (!p) return;
     setCompany(c); setBusy(true); setErr(''); setNote('');
     try {
-      const r = await fetch('/api/people', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domain: c.domain, roles: p.roles, location: p.location, query, company: c.name }) });
+      const r = await fetch('/api/people', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domain: c.domain, roles: p.roles, location: loc || undefined, query, company: c.name }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
       setPeople(j.people); setTotal(j.total); setIdx(0); setLiked([]);
-      if (j.droppedLocation) setNote(`No había nadie en "${p.location}", así que te muestro gente de ${c.name} en cualquier lugar.`);
+      if (j.droppedLocation) setNote(`No había nadie en "${placeLabel}", así que te muestro gente de ${c.name} en cualquier lugar.`);
       if (!j.people.length) setErr(`No encontré ${p.role_labels.join(' / ') || 'ese cargo'} en ${c.name}. Probá con otro cargo o empresa.`);
       else setStep(3);
     } catch (e: any) { setErr(e.message); }
@@ -162,7 +176,20 @@ export default function Home() {
       {step === 2 && parsed && (
         <>
           <h1>Entendí esto 👇</h1>
-          <p className="sub"><b>{parsed.summary}</b>. ¿A cuál de estas empresas te referís?</p>
+          <p className="sub"><b>{parsed.summary}</b>. Elegí dónde y en qué empresa.</p>
+          <div className="card" style={{ marginBottom: 12 }}>
+            <h2>📍 ¿Dónde?</h2>
+            <div className="chips">
+              <button type="button" className={`chip ${!place ? 'on' : ''}`} onClick={() => { setPlace(''); setPlaceLabel('Cualquier lugar'); }}>Cualquier lugar</button>
+              {PLACES.map((pl) => <button type="button" key={pl.value} className={`chip ${place === pl.value ? 'on' : ''}`} onClick={() => { setPlace(pl.value); setPlaceLabel(pl.label); }}>{pl.label}</button>)}
+              {place && !PLACES.some((pl) => pl.value === place) && <button type="button" className="chip on">{placeLabel}</button>}
+            </div>
+            <div className="row mt">
+              <input className="bigInput" style={{ padding: 10, fontSize: 14 }} placeholder="Otra ciudad o país (ej: Valencia, Perú)" value={customPlace} onChange={(e) => setCustomPlace(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && customPlace.trim()) { setPlace(toApolloPlace(customPlace.trim())); setPlaceLabel(customPlace.trim()); setCustomPlace(''); } }} />
+              <button className="btn small ghost" type="button" disabled={!customPlace.trim()} onClick={() => { setPlace(toApolloPlace(customPlace.trim())); setPlaceLabel(customPlace.trim()); setCustomPlace(''); }}>Usar</button>
+            </div>
+          </div>
+          <h2 style={{ marginBottom: 8 }}>🏢 ¿En qué empresa?</h2>
           <div className="card">
             {companies.map((c) => (
               <button key={c.domain} className="company" onClick={() => pickCompany(c)} disabled={busy}>
@@ -187,7 +214,7 @@ export default function Home() {
           <h1>¿Es esta persona?</h1>
           <p className="sub">Deslizá a la derecha (o ❤️) si es a quien buscás. A la izquierda (o ✕) si no. Tranqui: no gasta nada hasta que pidas los contactos.</p>
           {note && <div className="note">{note}</div>}
-          <div className="counter"><span>{Math.min(idx + 1, people.length)} de {people.length}{total > people.length ? ` (hay ${total} en total)` : ''}</span><span>❤️ {liked.length} elegidos</span></div>
+          <div className="counter"><span>{Math.min(idx + 1, people.length)} de {people.length}{total > people.length ? ` (hay ${total} en total)` : ''}</span><span>📍 {placeLabel} · ❤️ {liked.length}</span></div>
           <div className="deck">
             {next && <div className="person behind"><div className="avatar">{initials(next)}</div><h3>{next.first_name} {next.last_name_hint}</h3></div>}
             {current ? (
@@ -195,7 +222,8 @@ export default function Home() {
                 {current.photo ? <img className="avatar" src={current.photo} alt="" /> : <div className="avatar">{initials(current)}</div>}
                 <h3>{current.first_name} {current.last_name_hint}</h3>
                 <div className="title">{current.title}</div>
-                <div className="meta">{current.company}{current.city ? ` · ${current.city}` : ''}{current.country ? `, ${current.country}` : ''}</div>
+                <div className="meta">{current.company}</div>
+                <div className="meta">📍 {current.city || current.country ? [current.city, current.country].filter(Boolean).join(', ') : placeLabel}</div>
                 <div className="badges">
                   <span className={`badge ${current.has_email ? 'ok' : ''}`}>{current.has_email ? '📧 tiene mail' : '📧 mail: a buscar'}</span>
                   <span className={`badge ${current.maybe_phone ? 'warn' : ''}`}>{current.maybe_phone ? '📱 puede tener teléfono' : '📱 teléfono: a buscar'}</span>

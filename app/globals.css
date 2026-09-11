@@ -30,6 +30,7 @@ h2 { font-size: 20px; margin: 0 0 6px; letter-spacing: -.01em; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
 .chip { background: #eef1ff; color: #2b44c9; padding: 8px 12px; border-radius: 999px; font-size: 13px; }
 .chip:hover { background: #dfe5ff; }
+.chip.on { background: var(--brand); color: #fff; }
 
 .btn { width: 100%; padding: 16px; border-radius: 14px; font-weight: 700; font-size: 17px; background: var(--brand); color: var(--brand-ink); margin-top: 14px; transition: transform .05s; }
 .btn:active { transform: scale(.98); }
